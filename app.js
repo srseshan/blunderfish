@@ -137,14 +137,19 @@ function resultLabel(result) {
 // render inconsistently thin across fonts/OSes.
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
-function renderBoard(fen, highlight = {}) {
+// orientation 'w' = White's home row at the bottom (standard); 'b' = flipped
+// so Black's home row is at the bottom — used to always put the selected
+// chess.com user's own pieces closest to them, like chess.com does.
+function renderBoard(fen, highlight = {}, orientation = 'w') {
   const boardChess = new Chess(fen);
   const rows = boardChess.board(); // rows[0] = rank 8 ... rows[7] = rank 1
   const boardEl = el('board');
   let html = '';
 
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
+  for (let displayRow = 0; displayRow < 8; displayRow++) {
+    for (let displayCol = 0; displayCol < 8; displayCol++) {
+      const r = orientation === 'w' ? displayRow : 7 - displayRow;
+      const c = orientation === 'w' ? displayCol : 7 - displayCol;
       const square = `${FILES[c]}${8 - r}`;
       const isLight = (r + c) % 2 === 0;
       const classes = ['sq', isLight ? 'light' : 'dark'];
@@ -273,6 +278,7 @@ async function analyzeGame(game, username) {
   // Reset replay state and show the starting position immediately.
   const startFen = chess.fen();
   const startEval = await engine.evaluate(startFen, depth); // white to move, so score is already white-relative
+  const orientation = (username && black.toLowerCase() === username.toLowerCase()) ? 'b' : 'w';
   state.replay = {
     positions: [{
       fen: startFen,
@@ -288,6 +294,7 @@ async function analyzeGame(game, username) {
     currentIndex: 0,
     white,
     black,
+    orientation,
   };
   showReplay();
   updatePlayerLabels(username);
@@ -363,22 +370,28 @@ function showReplay() {
   el('replay').classList.remove('hidden');
 }
 
-// Board is always drawn with rank 8 at the top (Black's home row) and rank 1
-// at the bottom (White's home row) — label both permanently, and mark
-// whichever side matches the fetched username so it's unambiguous.
+// The board orientation puts the selected chess.com user's pieces at the
+// bottom (state.replay.orientation) — labels follow the same orientation so
+// "you" always shows up on the bottom row, matching the board.
 function updatePlayerLabels(selectedUsername) {
-  const { white, black } = state.replay;
+  const { white, black, orientation } = state.replay;
   const isSelectedWhite = selectedUsername && white.toLowerCase() === selectedUsername.toLowerCase();
   const isSelectedBlack = selectedUsername && black.toLowerCase() === selectedUsername.toLowerCase();
+
+  const bottomIsWhite = orientation === 'w';
+  const bottomName = bottomIsWhite ? white : black;
+  const topName = bottomIsWhite ? black : white;
+  const bottomIsSelected = bottomIsWhite ? isSelectedWhite : isSelectedBlack;
+  const topIsSelected = bottomIsWhite ? isSelectedBlack : isSelectedWhite;
 
   const topEl = el('player-top');
   const bottomEl = el('player-bottom');
 
-  topEl.innerHTML = `<span class="piece-dot black"></span>${black}${isSelectedBlack ? ' <span class="you-tag">(you)</span>' : ''}`;
-  bottomEl.innerHTML = `<span class="piece-dot white"></span>${white}${isSelectedWhite ? ' <span class="you-tag">(you)</span>' : ''}`;
+  topEl.innerHTML = `<span class="piece-dot ${bottomIsWhite ? 'black' : 'white'}"></span>${topName}${topIsSelected ? ' <span class="you-tag">(you)</span>' : ''}`;
+  bottomEl.innerHTML = `<span class="piece-dot ${bottomIsWhite ? 'white' : 'black'}"></span>${bottomName}${bottomIsSelected ? ' <span class="you-tag">(you)</span>' : ''}`;
 
-  topEl.classList.toggle('is-you', isSelectedBlack);
-  bottomEl.classList.toggle('is-you', isSelectedWhite);
+  topEl.classList.toggle('is-you', topIsSelected);
+  bottomEl.classList.toggle('is-you', bottomIsSelected);
 }
 
 function goToIndex(idx) {
@@ -388,7 +401,7 @@ function goToIndex(idx) {
   state.replay.currentIndex = clamped;
   const pos = positions[clamped];
 
-  renderBoard(pos.fen, { from: pos.from, to: pos.to });
+  renderBoard(pos.fen, { from: pos.from, to: pos.to }, state.replay.orientation);
   el('nav-position').textContent = `Move ${clamped} / ${positions.length - 1}`;
   el('nav-first').disabled = clamped === 0;
   el('nav-prev').disabled = clamped === 0;
