@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Chess Analyzer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Chess Analyzer</h1>
+    <p class="sub">Pull your chess.com history and get a real Stockfish per-player accuracy score.</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>From chess.com</h2>
+      <div class="row">
+        <input id="username" type="text" placeholder="chess.com username" />
+        <label for="depth">Depth</label>
+        <select id="depth">
+          <option value="10">10 (fast)</option>
+          <option value="14" selected>14 (default)</option>
+          <option value="18">18 (slower, stronger)</option>
+        </select>
+        <button id="fetch-btn">Fetch history</button>
+      </div>
+      <div id="game-table-wrap"></div>
+    </section>
+
+    <section class="panel">
+      <div class="row status-row">
+        <span id="status">Enter a chess.com username to get started.</span>
+        <span id="progress"></span>
+      </div>
+
+      <div id="replay" class="replay hidden">
+        <div class="board-side">
+          <div id="player-top" class="player-label"></div>
+          <div id="board" class="board"></div>
+          <div id="player-bottom" class="player-label"></div>
+          <div class="row nav-row">
+            <button id="nav-first">⏮</button>
+            <button id="nav-prev">◀</button>
+            <span id="nav-position">Move 0</span>
+            <button id="nav-next">▶</button>
+            <button id="nav-last">⏭</button>
+          </div>
+        </div>
+        <div id="move-panel" class="move-panel"></div>
+      </div>
+
+      <div id="results"></div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
