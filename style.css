@@ -109,7 +109,14 @@ button:hover:not(:disabled) { background: #2559ab; }
   margin-top: 0.75rem;
   max-height: 320px;
   overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: 8px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .game-table {
@@ -249,14 +256,16 @@ button:hover:not(:disabled) { background: #2559ab; }
   flex-direction: column;
   align-items: center;
   gap: 0.6rem;
+  width: 100%;
+  max-width: 400px;
 }
 
 .board {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  width: min(360px, 90vw);
-  height: min(360px, 90vw);
+  width: min(360px, 100%);
+  aspect-ratio: 1 / 1;
   border: 2px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
@@ -298,7 +307,7 @@ button:hover:not(:disabled) { background: #2559ab; }
   gap: 0.4rem;
   font-size: 0.95rem;
   padding: 0.15rem 0;
-  width: min(360px, 90vw);
+  width: min(360px, 100%);
 }
 
 .player-label.is-you { font-weight: 700; }
@@ -340,3 +349,48 @@ button:hover:not(:disabled) { background: #2559ab; }
 .mp-badge.inaccuracy { background: var(--inaccuracy); color: #1d1d1f; }
 .mp-badge.mistake { background: var(--mistake); }
 .mp-badge.blunder { background: var(--blunder); }
+
+/* Mobile: stack controls and the replay layout instead of squeezing them
+   side by side, and prevent any single element from forcing page-wide
+   horizontal scroll. */
+@media (max-width: 640px) {
+  body { padding: 0 0.6rem 2rem; }
+  header { padding: 1.25rem 0 0.75rem; }
+
+  .panel { padding: 0.85rem; }
+
+  .row:not(.nav-row):not(.status-row) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  input[type="text"] { min-width: 0; }
+
+  .status-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .replay {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .board, .player-label {
+    width: min(100%, 420px);
+  }
+
+  .move-panel {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .summary-grid {
+    gap: 0.6rem;
+  }
+
+  .player-col { padding: 0.75rem 0.5rem; }
+  .accuracy { font-size: 1.8rem; }
+}

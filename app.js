@@ -477,19 +477,21 @@ function renderSummary(perMove, game, username) {
         ${renderCounts(blackCounts)}
       </div>
     </div>
-    <table class="move-table">
-      <thead><tr><th>#</th><th>Move</th><th>Side</th><th>Eval (white persp.)</th><th>Class</th></tr></thead>
-      <tbody>
-        ${perMove.map((m, i) => `
-          <tr class="row-${m.classification} clickable-row" data-position-idx="${i + 1}">
-            <td>${m.moveNumber}</td>
-            <td>${m.san}</td>
-            <td>${m.playerColor === 'w' ? 'White' : 'Black'}</td>
-            <td>${m.whiteRelativeEval.toFixed(2)}</td>
-            <td>${m.classification}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="move-table">
+        <thead><tr><th>#</th><th>Move</th><th>Side</th><th>Eval (white persp.)</th><th>Class</th></tr></thead>
+        <tbody>
+          ${perMove.map((m, i) => `
+            <tr class="row-${m.classification} clickable-row" data-position-idx="${i + 1}">
+              <td>${m.moveNumber}</td>
+              <td>${m.san}</td>
+              <td>${m.playerColor === 'w' ? 'White' : 'Black'}</td>
+              <td>${m.whiteRelativeEval.toFixed(2)}</td>
+              <td>${m.classification}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
   `;
 
   resultsEl.querySelectorAll('.clickable-row').forEach((row) => {
