@@ -212,6 +212,9 @@ el('fetch-btn').addEventListener('click', async () => {
   el('fetch-btn').disabled = true;
   setStatus('Fetching game history from chess.com...');
   el('game-table-wrap').innerHTML = '';
+  el('replay').classList.add('hidden');
+  el('results').innerHTML = '';
+  el('progress').textContent = '';
 
   try {
     const games = await fetchRecentGames(username, 2);
