@@ -176,6 +176,14 @@ button:hover:not(:disabled) { background: #2559ab; }
   font-size: 0.85rem;
 }
 
+.score-btn {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: var(--best);
+}
+.score-btn:hover { background: #257e40; }
+
 #status { color: var(--muted); }
 #progress { font-variant-numeric: tabular-nums; color: var(--muted); }
 

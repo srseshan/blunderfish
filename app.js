@@ -91,6 +91,12 @@ function classifyLoss(centipawnLoss) {
   return 'blunder';
 }
 
+function computeAccuracy(moves) {
+  if (moves.length === 0) return 0;
+  const total = moves.reduce((sum, m) => sum + (CLASSIFICATION_WEIGHTS[m.classification] || 0), 0);
+  return Math.round((total / moves.length) * 100);
+}
+
 // ---------- chess.com lookup ----------
 // Public API, CORS-open (verified: access-control-allow-origin: *), so this
 // can be called straight from the browser with no backend.
@@ -175,6 +181,9 @@ const state = {
   engine: null,
   games: [],
   username: '',
+  // In-memory only (cleared on page reload) — keyed by `${game.url}|${depth}`
+  // so re-clicking an already-analyzed game skips re-running the engine.
+  analysisCache: new Map(),
   replay: {
     positions: [], // index 0 = starting position; index i = after perMove[i-1]
     currentIndex: 0,
@@ -227,7 +236,7 @@ function renderGameTable(games, username) {
   wrap.innerHTML = `
     <table class="game-table">
       <thead>
-        <tr><th>Date</th><th>Opponent</th><th>Time control</th><th>You played</th><th>Result</th><th></th></tr>
+        <tr><th>Date</th><th>Opponent</th><th>Time control</th><th>You played</th><th>Result</th><th>Score</th></tr>
       </thead>
       <tbody>
         ${rows.map((r, i) => `
@@ -237,7 +246,7 @@ function renderGameTable(games, username) {
             <td>${r.timeClass}</td>
             <td><span class="piece-dot ${r.color.toLowerCase()}"></span>${r.color}</td>
             <td><span class="badge badge-${r.outcome}">${r.outcome}</span></td>
-            <td><button class="analyze-row-btn" data-idx="${i}">Analyze</button></td>
+            <td class="score-cell" data-idx="${i}"><button class="analyze-row-btn" data-idx="${i}">Analyze</button></td>
           </tr>`).join('')}
       </tbody>
     </table>
@@ -246,18 +255,63 @@ function renderGameTable(games, username) {
   wrap.querySelectorAll('.analyze-row-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.idx, 10);
-      analyzeGame(games[idx], username);
+      analyzeGame(games[idx], username, idx);
     });
+  });
+
+  // If a game in this list was already analyzed earlier in the session
+  // (e.g. re-fetching the same range), show its cached score right away
+  // instead of the Analyze button.
+  const depth = parseInt(el('depth').value, 10) || 14;
+  games.forEach((game, i) => {
+    const cached = state.analysisCache.get(cacheKey(game, depth));
+    if (cached) renderScoreCell(i, cached.userAccuracy);
   });
 }
 
-async function analyzeGame(game, username) {
+function cacheKey(game, depth) {
+  return `${game.url || game.pgn}|${depth}`;
+}
+
+function renderScoreCell(idx, userAccuracy) {
+  const cell = document.querySelector(`.score-cell[data-idx="${idx}"]`);
+  if (!cell) return;
+  cell.innerHTML = `<button class="score-btn" data-idx="${idx}">${userAccuracy}%</button>`;
+  cell.querySelector('.score-btn').addEventListener('click', () => {
+    const game = state.games[idx];
+    analyzeGame(game, state.username, idx);
+  });
+}
+
+async function analyzeGame(game, username, idx) {
   const depth = parseInt(el('depth').value, 10) || 14;
   el('results').innerHTML = '';
   el('progress').textContent = '';
 
   const white = game.white?.username || 'White';
   const black = game.black?.username || 'Black';
+  const orientation = (username && black.toLowerCase() === username.toLowerCase()) ? 'b' : 'w';
+
+  const key = cacheKey(game, depth);
+  const cached = state.analysisCache.get(key);
+
+  if (cached) {
+    setStatus('Loaded from cache — no re-analysis needed.');
+    state.replay = {
+      positions: cached.positions,
+      currentIndex: 0,
+      white,
+      black,
+      orientation,
+    };
+    showReplay();
+    updatePlayerLabels(username);
+    goToIndex(0);
+    renderSummary(cached.perMove, game, username);
+    if (idx !== undefined) renderScoreCell(idx, cached.userAccuracy);
+    setStatus('Done (cached).');
+    return;
+  }
 
   let chess;
   try {
@@ -278,7 +332,6 @@ async function analyzeGame(game, username) {
   // Reset replay state and show the starting position immediately.
   const startFen = chess.fen();
   const startEval = await engine.evaluate(startFen, depth); // white to move, so score is already white-relative
-  const orientation = (username && black.toLowerCase() === username.toLowerCase()) ? 'b' : 'w';
   state.replay = {
     positions: [{
       fen: startFen,
@@ -361,7 +414,18 @@ async function analyzeGame(game, username) {
     el('progress').textContent = `${pct}%`;
   }
 
+  const whiteAccuracy = computeAccuracy(perMove.filter((m) => m.playerColor === 'w'));
+  const blackAccuracy = computeAccuracy(perMove.filter((m) => m.playerColor === 'b'));
+  const userAccuracy = orientation === 'w' ? whiteAccuracy : blackAccuracy;
+
+  state.analysisCache.set(key, {
+    positions: state.replay.positions,
+    perMove,
+    userAccuracy,
+  });
+
   renderSummary(perMove, game, username);
+  if (idx !== undefined) renderScoreCell(idx, userAccuracy);
   setStatus('Done.');
 }
 
@@ -446,20 +510,14 @@ function renderSummary(perMove, game, username) {
   const whiteMoves = perMove.filter((m) => m.playerColor === 'w');
   const blackMoves = perMove.filter((m) => m.playerColor === 'b');
 
-  const accuracy = (moves) => {
-    if (moves.length === 0) return 0;
-    const total = moves.reduce((sum, m) => sum + (CLASSIFICATION_WEIGHTS[m.classification] || 0), 0);
-    return Math.round((total / moves.length) * 100);
-  };
-
   const counts = (moves) => {
     const c = { best: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
     for (const m of moves) c[m.classification]++;
     return c;
   };
 
-  const whiteAcc = accuracy(whiteMoves);
-  const blackAcc = accuracy(blackMoves);
+  const whiteAcc = computeAccuracy(whiteMoves);
+  const blackAcc = computeAccuracy(blackMoves);
   const whiteCounts = counts(whiteMoves);
   const blackCounts = counts(blackMoves);
 
