@@ -190,6 +190,20 @@ button:hover:not(:disabled) { background: #2559ab; }
 }
 .score-btn:hover { background: #257e40; }
 
+.spinner {
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid var(--border);
+  border-top-color: #2e6fd1;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 #status { color: var(--muted); }
 #progress { font-variant-numeric: tabular-nums; color: var(--muted); }
 

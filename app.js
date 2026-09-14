@@ -345,6 +345,7 @@ function renderGameTable(games, username) {
   wrap.querySelectorAll('.analyze-row-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.idx, 10);
+      renderLoadingCell(idx);
       analyzeGame(games[idx], username, idx);
     });
   });
@@ -363,11 +364,30 @@ function cacheKey(game, movetimeMs) {
   return `${game.url || game.pgn}|${movetimeMs}`;
 }
 
+function renderLoadingCell(idx) {
+  const cell = document.querySelector(`.score-cell[data-idx="${idx}"]`);
+  if (!cell) return;
+  cell.innerHTML = '<span class="spinner" role="status" aria-label="Analyzing"></span>';
+}
+
+// Restores the plain Analyze button — used when analysis fails partway
+// through, so the row doesn't get stuck showing a spinner forever.
+function renderAnalyzeCell(idx) {
+  const cell = document.querySelector(`.score-cell[data-idx="${idx}"]`);
+  if (!cell) return;
+  cell.innerHTML = `<button class="analyze-row-btn" data-idx="${idx}">Analyze</button>`;
+  cell.querySelector('.analyze-row-btn').addEventListener('click', () => {
+    renderLoadingCell(idx);
+    analyzeGame(state.games[idx], state.username, idx);
+  });
+}
+
 function renderScoreCell(idx, userAccuracy) {
   const cell = document.querySelector(`.score-cell[data-idx="${idx}"]`);
   if (!cell) return;
   cell.innerHTML = `<button class="score-btn" data-idx="${idx}">${userAccuracy}%</button>`;
   cell.querySelector('.score-btn').addEventListener('click', () => {
+    renderLoadingCell(idx);
     const game = state.games[idx];
     analyzeGame(game, state.username, idx);
   });
@@ -409,6 +429,7 @@ async function analyzeGame(game, username, idx) {
     chess.loadPgn(game.pgn);
   } catch (err) {
     setStatus('Could not parse that game\'s PGN.');
+    if (idx !== undefined) renderAnalyzeCell(idx);
     return;
   }
 
