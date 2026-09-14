@@ -20,6 +20,15 @@ class Engine {
       this.worker.addEventListener('message', onFirstReady);
     });
     this.worker.postMessage('uci');
+    // Line these up with chess.com's own documented Game Review config
+    // (Stockfish 18 Lite, MultiPV 3) as closely as a single-threaded WASM
+    // build allows. Threads can't be matched — that build is compiled
+    // single-threaded, not just configured that way, so multi-threading
+    // would mean switching to a different WASM binary + cross-origin
+    // isolation headers, a hosting change, not a settings tweak.
+    this.worker.postMessage('setoption name Hash value 64');
+    this.worker.postMessage('setoption name MultiPV value 3');
+    this.worker.postMessage('setoption name UCI_AnalyseMode value true');
     this.worker.postMessage('isready');
   }
 
@@ -43,6 +52,12 @@ class Engine {
       const onMessage = (e) => {
         const line = e.data;
         if (typeof line !== 'string') return;
+
+        // With MultiPV 3 the engine reports three separate candidate lines
+        // per depth (multipv 1/2/3). Only line 1 is the actual best move —
+        // ignore updates from lines 2/3 or they'll clobber the real score.
+        const multipvMatch = line.match(/multipv (\d+)/);
+        if (multipvMatch && multipvMatch[1] !== '1') return;
 
         const mateMatch = line.match(/score mate (-?\d+)/);
         const cpMatch = line.match(/score cp (-?\d+)/);
