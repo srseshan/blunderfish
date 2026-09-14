@@ -23,12 +23,17 @@ class Engine {
     this.worker.postMessage('isready');
   }
 
-  // Runs `go movetime N` on a FEN and resolves with { bestMove, score, isMate, mateIn }.
-  // score is in pawns from the side-to-move's perspective (UCI cp / 100).
-  // Time-based (not depth-based) to match how chess.com's own Game Review
-  // runs Stockfish 18 Lite: a fixed 5s per move, not a fixed depth — a fixed
-  // depth can finish "early" on positions that are already clearly winning,
-  // missing subtler errors a full time budget would still catch.
+  // Runs `go depth 18 movetime N` on a FEN and resolves with
+  // { bestMove, score, isMate, mateIn }. score is in pawns from the
+  // side-to-move's perspective (UCI cp / 100).
+  // Bounded by BOTH a depth ceiling and a time cap — the engine stops at
+  // whichever it hits first. A flat movetime alone burns the full budget on
+  // every move even trivial/forced ones (recaptures, forced replies, book
+  // moves), which made analysis feel far slower than the old fixed-depth
+  // version. Depth 18 resolves those easy positions almost instantly, same
+  // as before; the time cap only actually gets used on positions complex
+  // enough to still be searching when it runs out, which is exactly where
+  // a fixed depth used to finish "early" and miss subtler errors.
   evaluate(fen, movetimeMs = 3000) {
     return new Promise((resolve) => {
       let lastScore = null;
@@ -65,7 +70,7 @@ class Engine {
 
       this.worker.addEventListener('message', onMessage);
       this.worker.postMessage(`position fen ${fen}`);
-      this.worker.postMessage(`go movetime ${movetimeMs}`);
+      this.worker.postMessage(`go depth 18 movetime ${movetimeMs}`);
     });
   }
 
