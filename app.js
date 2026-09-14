@@ -86,29 +86,77 @@ function classifyLoss(centipawnLoss) {
 }
 
 // ---------- Accuracy scoring ----------
-// Same win-probability model chess.com/lichess use, instead of averaging
-// discrete move-quality buckets. Bucket-averaging dilutes a single game-losing
-// blunder into near-nothing over a long game (one 0.1-weighted move among 40
-// barely moves the average), which is why a bucket-based score can look right
-// for clean winning games but badly overstate accuracy in games with a real
-// blunder. Converting eval to win% and measuring the probability drop per
-// move makes a blunder that flips the game cost what it should.
+// Ported from lichess's actual open-source implementation (chess.com's own
+// formula is closed-source, but lichess publishes theirs and both platforms
+// describe the same win-probability approach):
+//   - WinPercent.fromCentiPawns / winningChances in lichess-org/scalachess
+//     (core/src/main/scala/eval.scala)
+//   - AccuracyPercent.fromWinPercents and .gameAccuracy in lichess-org/lila
+//     (modules/analyse/src/main/AccuracyPercent.scala)
+// Constants and the ceiling below are copied from there, not guessed.
 function cpToWinPercent(centipawns) {
-  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * centipawns)) - 1);
+  const cp = Math.max(-1000, Math.min(1000, centipawns)); // engine's own eval ceiling
+  const winningChances = Math.max(-1, Math.min(1, 2 / (1 + Math.exp(-0.00368208 * cp)) - 1));
+  return 50 + 50 * winningChances;
 }
 
 // winPercentBefore/After are both from the moving side's own perspective.
 function moveAccuracyFromWinPercent(winPercentBefore, winPercentAfter) {
-  const drop = winPercentBefore - winPercentAfter;
-  if (drop <= 0) return 100; // move held or improved the position
-  const accuracy = 103.1668 * Math.exp(-0.04354 * drop) - 3.1669;
-  return Math.max(0, Math.min(100, accuracy));
+  if (winPercentAfter >= winPercentBefore) return 100; // move held or improved the position
+  const winDiff = winPercentBefore - winPercentAfter;
+  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * winDiff) - 3.166924740191411;
+  return Math.max(0, Math.min(100, raw + 1)); // +1: uncertainty bonus, per lichess source
 }
 
-function computeAccuracy(moves) {
-  if (moves.length === 0) return 0;
-  const total = moves.reduce((sum, m) => sum + m.accuracy, 0);
-  return Math.round(total / moves.length);
+function standardDeviation(nums) {
+  if (nums.length === 0) return 0;
+  const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+  const variance = nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length;
+  return Math.sqrt(variance);
+}
+
+// Real per-color game accuracy is NOT a plain average of per-move accuracy —
+// that dilutes a single game-losing blunder into near-nothing over a long
+// game. Lichess (and, going by chess.com's own description of CAPS2, chess.com
+// too) instead weights each move's accuracy by how "volatile"/critical the
+// position was around that point in the game (a sharp, swingy moment counts
+// more than a routine one), then averages a volatility-weighted mean with a
+// volatility-weighted harmonic mean — the harmonic mean is what makes a bad
+// blunder actually tank the score instead of getting smoothed away.
+function gameAccuracy(positions, perMove) {
+  const allWinPercents = positions.map((p) => cpToWinPercent(p.whiteRelativeEval * 100));
+  const n = perMove.length;
+  if (n === 0) return { w: 0, b: 0 };
+
+  const windowSize = Math.max(2, Math.min(8, Math.floor(n / 10)));
+  const windows = [];
+  const fixedWindow = allWinPercents.slice(0, Math.min(windowSize, allWinPercents.length));
+  for (let i = 0; i < windowSize - 2; i++) windows.push(fixedWindow);
+  for (let start = 0; start + windowSize <= allWinPercents.length; start++) {
+    windows.push(allWinPercents.slice(start, start + windowSize));
+  }
+
+  const weights = windows.map((w) => Math.max(0.5, Math.min(12, standardDeviation(w))));
+
+  const byColor = { w: [], b: [] };
+  for (let i = 0; i < n; i++) {
+    byColor[perMove[i].playerColor].push({ value: perMove[i].accuracy, weight: weights[i] });
+  }
+
+  const weightedMean = (pairs) => {
+    const sumW = pairs.reduce((s, p) => s + p.weight, 0);
+    if (sumW === 0) return 0;
+    return pairs.reduce((s, p) => s + p.value * p.weight, 0) / sumW;
+  };
+  const harmonicMean = (pairs) => {
+    const sumW = pairs.reduce((s, p) => s + p.weight, 0);
+    const denom = pairs.reduce((s, p) => s + p.weight / Math.max(p.value, 1e-6), 0);
+    if (denom === 0) return 0;
+    return sumW / denom;
+  };
+  const colorAccuracy = (pairs) => (pairs.length === 0 ? 0 : Math.round((weightedMean(pairs) + harmonicMean(pairs)) / 2));
+
+  return { w: colorAccuracy(byColor.w), b: colorAccuracy(byColor.b) };
 }
 
 // ---------- chess.com lookup ----------
@@ -324,7 +372,7 @@ async function analyzeGame(game, username, idx) {
     showReplay();
     updatePlayerLabels(username);
     goToIndex(0);
-    renderSummary(cached.perMove, game, username);
+    renderSummary(cached.perMove, game, username, cached.positions);
     if (idx !== undefined) renderScoreCell(idx, cached.userAccuracy);
     setStatus('Done (cached).');
     return;
@@ -435,8 +483,7 @@ async function analyzeGame(game, username, idx) {
     el('progress').textContent = `${pct}%`;
   }
 
-  const whiteAccuracy = computeAccuracy(perMove.filter((m) => m.playerColor === 'w'));
-  const blackAccuracy = computeAccuracy(perMove.filter((m) => m.playerColor === 'b'));
+  const { w: whiteAccuracy, b: blackAccuracy } = gameAccuracy(state.replay.positions, perMove);
   const userAccuracy = orientation === 'w' ? whiteAccuracy : blackAccuracy;
 
   state.analysisCache.set(key, {
@@ -445,7 +492,7 @@ async function analyzeGame(game, username, idx) {
     userAccuracy,
   });
 
-  renderSummary(perMove, game, username);
+  renderSummary(perMove, game, username, state.replay.positions);
   if (idx !== undefined) renderScoreCell(idx, userAccuracy);
   setStatus('Done.');
 }
@@ -524,7 +571,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') goToIndex(state.replay.currentIndex + 1);
 });
 
-function renderSummary(perMove, game, username) {
+function renderSummary(perMove, game, username, positions) {
   const white = game.white?.username || 'White';
   const black = game.black?.username || 'Black';
 
@@ -537,8 +584,7 @@ function renderSummary(perMove, game, username) {
     return c;
   };
 
-  const whiteAcc = computeAccuracy(whiteMoves);
-  const blackAcc = computeAccuracy(blackMoves);
+  const { w: whiteAcc, b: blackAcc } = gameAccuracy(positions, perMove);
   const whiteCounts = counts(whiteMoves);
   const blackCounts = counts(blackMoves);
 
