@@ -149,6 +149,10 @@ button:hover:not(:disabled) { background: #2559ab; }
   border-bottom: 1px solid var(--border);
 }
 
+.score-cell {
+  text-align: center;
+}
+
 .game-table tr.outcome-win { background: color-mix(in srgb, var(--best) 8%, transparent); }
 .game-table tr.outcome-loss { background: color-mix(in srgb, var(--blunder) 8%, transparent); }
 .game-table tr.outcome-draw { background: color-mix(in srgb, var(--inaccuracy) 8%, transparent); }
@@ -192,6 +196,7 @@ button:hover:not(:disabled) { background: #2559ab; }
 
 .spinner {
   display: inline-block;
+  vertical-align: middle;
   width: 1.1rem;
   height: 1.1rem;
   border: 2px solid var(--border);
