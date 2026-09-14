@@ -71,6 +71,12 @@ main {
   flex-wrap: wrap;
 }
 
+.status-block {
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .status-row {
   justify-content: space-between;
 }
