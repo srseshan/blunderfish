@@ -10,8 +10,9 @@ Live: https://srseshan.github.io/blunderfish/
 - Enter a chess.com username and fetch your recent game history (via
   chess.com's public, CORS-open API — no backend involved).
 - Pick a game and it runs every move through a real Stockfish engine
-  (compiled to WebAssembly, running in a Web Worker) at a chosen search
-  depth — not a mock or an approximation.
+  (compiled to WebAssembly, running in a Web Worker) for a chosen amount of
+  thinking time per move — not a mock or an approximation. Defaults to 5s
+  per move, the same setting chess.com's own Game Review uses.
 - Each move gets classified (best / good / inaccuracy / mistake / blunder)
   based on how much it cost versus the engine's own top choice, and each
   player gets a 0–100% accuracy score for that game.
@@ -52,4 +53,5 @@ This serves the app at `http://127.0.0.1:8420` and opens it automatically.
 - First analysis in a session takes a few seconds longer since it's loading
   the ~7MB Stockfish WASM binary; it's cached by the browser after that.
 - Analysis is genuinely sequential (one real engine search per move), so a
-  higher depth setting or a longer game takes proportionally longer.
+  longer thinking-time setting or a longer game takes proportionally longer —
+  at the default 5s/move, a 40-move game takes a few minutes.

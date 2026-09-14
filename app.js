@@ -23,9 +23,13 @@ class Engine {
     this.worker.postMessage('isready');
   }
 
-  // Runs `go depth N` on a FEN and resolves with { bestMove, score, isMate, mateIn }.
+  // Runs `go movetime N` on a FEN and resolves with { bestMove, score, isMate, mateIn }.
   // score is in pawns from the side-to-move's perspective (UCI cp / 100).
-  evaluate(fen, depth = 14) {
+  // Time-based (not depth-based) to match how chess.com's own Game Review
+  // runs Stockfish 18 Lite: a fixed 5s per move, not a fixed depth — a fixed
+  // depth can finish "early" on positions that are already clearly winning,
+  // missing subtler errors a full time budget would still catch.
+  evaluate(fen, movetimeMs = 5000) {
     return new Promise((resolve) => {
       let lastScore = null;
       let lastIsMate = false;
@@ -61,7 +65,7 @@ class Engine {
 
       this.worker.addEventListener('message', onMessage);
       this.worker.postMessage(`position fen ${fen}`);
-      this.worker.postMessage(`go depth ${depth}`);
+      this.worker.postMessage(`go movetime ${movetimeMs}`);
     });
   }
 
@@ -243,7 +247,7 @@ const state = {
   engine: null,
   games: [],
   username: '',
-  // In-memory only (cleared on page reload) — keyed by `${game.url}|${depth}`
+  // In-memory only (cleared on page reload) — keyed by `${game.url}|${movetimeMs}`
   // so re-clicking an already-analyzed game skips re-running the engine.
   analysisCache: new Map(),
   replay: {
@@ -327,15 +331,15 @@ function renderGameTable(games, username) {
   // If a game in this list was already analyzed earlier in the session
   // (e.g. re-fetching the same range), show its cached score right away
   // instead of the Analyze button.
-  const depth = parseInt(el('depth').value, 10) || 14;
+  const movetimeMs = parseInt(el('depth').value, 10) || 5000;
   games.forEach((game, i) => {
-    const cached = state.analysisCache.get(cacheKey(game, depth));
+    const cached = state.analysisCache.get(cacheKey(game, movetimeMs));
     if (cached) renderScoreCell(i, cached.userAccuracy);
   });
 }
 
-function cacheKey(game, depth) {
-  return `${game.url || game.pgn}|${depth}`;
+function cacheKey(game, movetimeMs) {
+  return `${game.url || game.pgn}|${movetimeMs}`;
 }
 
 function renderScoreCell(idx, userAccuracy) {
@@ -349,7 +353,7 @@ function renderScoreCell(idx, userAccuracy) {
 }
 
 async function analyzeGame(game, username, idx) {
-  const depth = parseInt(el('depth').value, 10) || 14;
+  const movetimeMs = parseInt(el('depth').value, 10) || 5000;
   el('results').innerHTML = '';
   el('progress').textContent = '';
 
@@ -357,7 +361,7 @@ async function analyzeGame(game, username, idx) {
   const black = game.black?.username || 'Black';
   const orientation = (username && black.toLowerCase() === username.toLowerCase()) ? 'b' : 'w';
 
-  const key = cacheKey(game, depth);
+  const key = cacheKey(game, movetimeMs);
   const cached = state.analysisCache.get(key);
 
   if (cached) {
@@ -392,11 +396,11 @@ async function analyzeGame(game, username, idx) {
 
   setStatus('Loading Stockfish (first run downloads ~7MB, then it\'s cached)...');
   const engine = await ensureEngine();
-  setStatus(`Analyzing ${history.length} moves at depth ${depth}...`);
+  setStatus(`Analyzing ${history.length} moves at ${movetimeMs / 1000}s per move...`);
 
   // Reset replay state and show the starting position immediately.
   const startFen = chess.fen();
-  const startEval = await engine.evaluate(startFen, depth); // white to move, so score is already white-relative
+  const startEval = await engine.evaluate(startFen, movetimeMs); // white to move, so score is already white-relative
   state.replay = {
     positions: [{
       fen: startFen,
@@ -429,7 +433,7 @@ async function analyzeGame(game, username, idx) {
     chess.move(move);
     const fenAfter = chess.fen();
 
-    const evalResult = await engine.evaluate(fenAfter, depth);
+    const evalResult = await engine.evaluate(fenAfter, movetimeMs);
     // Stockfish reports score from the side-to-move's perspective *after* the
     // move (i.e. the opponent's perspective). Flip to a White-relative score.
     const sideToMoveAfter = playerColor === 'w' ? 'b' : 'w';
