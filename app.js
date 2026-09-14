@@ -74,15 +74,9 @@ class Engine {
 // ---------- Move classification ----------
 // Compares the eval right after the played move to the eval Stockfish would
 // have reached after its own best move from the same position, both from
-// White's perspective, and buckets the loss into a classification.
-const CLASSIFICATION_WEIGHTS = {
-  best: 1.0,
-  good: 0.9,
-  inaccuracy: 0.7,
-  mistake: 0.4,
-  blunder: 0.1,
-};
-
+// White's perspective, and buckets the loss into a classification. This
+// bucketing is only used for the per-move display label/color, not for the
+// game accuracy score below.
 function classifyLoss(centipawnLoss) {
   if (centipawnLoss <= 5) return 'best';
   if (centipawnLoss <= 30) return 'good';
@@ -91,10 +85,30 @@ function classifyLoss(centipawnLoss) {
   return 'blunder';
 }
 
+// ---------- Accuracy scoring ----------
+// Same win-probability model chess.com/lichess use, instead of averaging
+// discrete move-quality buckets. Bucket-averaging dilutes a single game-losing
+// blunder into near-nothing over a long game (one 0.1-weighted move among 40
+// barely moves the average), which is why a bucket-based score can look right
+// for clean winning games but badly overstate accuracy in games with a real
+// blunder. Converting eval to win% and measuring the probability drop per
+// move makes a blunder that flips the game cost what it should.
+function cpToWinPercent(centipawns) {
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * centipawns)) - 1);
+}
+
+// winPercentBefore/After are both from the moving side's own perspective.
+function moveAccuracyFromWinPercent(winPercentBefore, winPercentAfter) {
+  const drop = winPercentBefore - winPercentAfter;
+  if (drop <= 0) return 100; // move held or improved the position
+  const accuracy = 103.1668 * Math.exp(-0.04354 * drop) - 3.1669;
+  return Math.max(0, Math.min(100, accuracy));
+}
+
 function computeAccuracy(moves) {
   if (moves.length === 0) return 0;
-  const total = moves.reduce((sum, m) => sum + (CLASSIFICATION_WEIGHTS[m.classification] || 0), 0);
-  return Math.round((total / moves.length) * 100);
+  const total = moves.reduce((sum, m) => sum + m.accuracy, 0);
+  return Math.round(total / moves.length);
 }
 
 // ---------- chess.com lookup ----------
@@ -379,6 +393,9 @@ async function analyzeGame(game, username, idx) {
     const evalAfterForMover = playerColor === 'w' ? whiteRelativeEval : -whiteRelativeEval;
     const lossPawns = Math.max(0, evalBeforeForMover - evalAfterForMover);
     const classification = classifyLoss(Math.round(lossPawns * 100));
+    const winPercentBefore = cpToWinPercent(evalBeforeForMover * 100);
+    const winPercentAfter = cpToWinPercent(evalAfterForMover * 100);
+    const accuracy = moveAccuracyFromWinPercent(winPercentBefore, winPercentAfter);
 
     const moveEntry = {
       moveNumber: Math.floor(i / 2) + 1,
@@ -386,6 +403,7 @@ async function analyzeGame(game, username, idx) {
       san: move.san,
       whiteRelativeEval,
       classification,
+      accuracy,
     };
     perMove.push(moveEntry);
 
