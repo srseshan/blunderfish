@@ -20,14 +20,15 @@ class Engine {
       this.worker.addEventListener('message', onFirstReady);
     });
     this.worker.postMessage('uci');
-    // Line these up with chess.com's own documented Game Review config
-    // (Stockfish 18 Lite, MultiPV 3) as closely as a single-threaded WASM
-    // build allows. Threads can't be matched — that build is compiled
-    // single-threaded, not just configured that way, so multi-threading
-    // would mean switching to a different WASM binary + cross-origin
-    // isolation headers, a hosting change, not a settings tweak.
+    // Hash is a free quality/speed win (bigger transposition table), so it
+    // stays. MultiPV 3 (chess.com's Game Review setting) was tried too, but
+    // we don't actually read lines 2/3 anywhere yet — that's only needed for
+    // Great/Brilliant move detection, which isn't built — so it was pure
+    // search-time overhead (searching 3 lines costs real time per depth,
+    // even on a single-threaded engine) with zero benefit. Reverted to
+    // MultiPV 1 until that feature exists. UCI_AnalyseMode is set for
+    // parity but this build doesn't expose that option, so it's a no-op.
     this.worker.postMessage('setoption name Hash value 64');
-    this.worker.postMessage('setoption name MultiPV value 3');
     this.worker.postMessage('setoption name UCI_AnalyseMode value true');
     this.worker.postMessage('isready');
   }
