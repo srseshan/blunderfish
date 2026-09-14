@@ -29,7 +29,7 @@ class Engine {
   // runs Stockfish 18 Lite: a fixed 5s per move, not a fixed depth — a fixed
   // depth can finish "early" on positions that are already clearly winning,
   // missing subtler errors a full time budget would still catch.
-  evaluate(fen, movetimeMs = 5000) {
+  evaluate(fen, movetimeMs = 3000) {
     return new Promise((resolve) => {
       let lastScore = null;
       let lastIsMate = false;
@@ -331,7 +331,7 @@ function renderGameTable(games, username) {
   // If a game in this list was already analyzed earlier in the session
   // (e.g. re-fetching the same range), show its cached score right away
   // instead of the Analyze button.
-  const movetimeMs = parseInt(el('depth').value, 10) || 5000;
+  const movetimeMs = parseInt(el('depth').value, 10) || 3000;
   games.forEach((game, i) => {
     const cached = state.analysisCache.get(cacheKey(game, movetimeMs));
     if (cached) renderScoreCell(i, cached.userAccuracy);
@@ -353,7 +353,7 @@ function renderScoreCell(idx, userAccuracy) {
 }
 
 async function analyzeGame(game, username, idx) {
-  const movetimeMs = parseInt(el('depth').value, 10) || 5000;
+  const movetimeMs = parseInt(el('depth').value, 10) || 3000;
   el('results').innerHTML = '';
   el('progress').textContent = '';
 
