@@ -330,7 +330,7 @@ function renderGameTable(games, username) {
       </thead>
       <tbody>
         ${rows.map((r, i) => `
-          <tr class="outcome-${r.outcome}">
+          <tr class="outcome-${r.outcome}" data-idx="${i}">
             <td>${r.date}</td>
             <td>${r.opponent}</td>
             <td>${r.timeClass}</td>
@@ -362,6 +362,14 @@ function renderGameTable(games, username) {
 
 function cacheKey(game, movetimeMs) {
   return `${game.url || game.pgn}|${movetimeMs}`;
+}
+
+// Highlights whichever game row's replay/results are currently being shown,
+// clearing the highlight off any previously selected row.
+function selectRow(idx) {
+  document.querySelectorAll('.game-table tr.row-selected').forEach((tr) => tr.classList.remove('row-selected'));
+  const row = document.querySelector(`.game-table tr[data-idx="${idx}"]`);
+  if (row) row.classList.add('row-selected');
 }
 
 function renderLoadingCell(idx) {
@@ -404,6 +412,7 @@ async function analyzeGame(game, username, idx) {
   const movetimeMs = parseInt(el('depth').value, 10) || 3000;
   el('results').innerHTML = '';
   el('progress').textContent = '';
+  if (idx !== undefined) selectRow(idx);
 
   const white = game.white?.username || 'White';
   const black = game.black?.username || 'Black';

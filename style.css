@@ -157,6 +157,20 @@ button:hover:not(:disabled) { background: #2559ab; }
 .game-table tr.outcome-loss { background: color-mix(in srgb, var(--blunder) 8%, transparent); }
 .game-table tr.outcome-draw { background: color-mix(in srgb, var(--inaccuracy) 8%, transparent); }
 
+/* Marks whichever row's replay/results are currently on screen. Uses
+   borders rather than background so it stays visible on top of the
+   outcome-based row tinting above instead of fighting it. */
+.game-table tr.row-selected td {
+  border-top: 2px solid #2e6fd1;
+  border-bottom: 2px solid #2e6fd1;
+}
+.game-table tr.row-selected td:first-child {
+  border-left: 3px solid #2e6fd1;
+}
+.game-table tr.row-selected td:last-child {
+  border-right: 3px solid #2e6fd1;
+}
+
 .piece-dot {
   display: inline-block;
   width: 10px;
