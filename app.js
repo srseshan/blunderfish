@@ -367,7 +367,14 @@ function cacheKey(game, movetimeMs) {
 function renderLoadingCell(idx) {
   const cell = document.querySelector(`.score-cell[data-idx="${idx}"]`);
   if (!cell) return;
-  cell.innerHTML = '<span class="spinner" role="status" aria-label="Analyzing"></span>';
+  cell.innerHTML = '<span class="progress-circle" style="--pct: 0" role="status" aria-label="Analyzing"></span>';
+}
+
+// Fills in the mini circular progress indicator as analysis moves through
+// the game, instead of a plain indefinite spinner.
+function updateLoadingProgress(idx, pct) {
+  const circle = document.querySelector(`.score-cell[data-idx="${idx}"] .progress-circle`);
+  if (circle) circle.style.setProperty('--pct', pct);
 }
 
 // Restores the plain Analyze button — used when analysis fails partway
@@ -527,6 +534,7 @@ async function analyzeGame(game, username, idx) {
 
     const pct = Math.round(((i + 1) / history.length) * 100);
     el('progress').textContent = `${pct}%`;
+    if (idx !== undefined) updateLoadingProgress(idx, pct);
   }
 
   const { w: whiteAccuracy, b: blackAccuracy } = gameAccuracy(state.replay.positions, perMove);

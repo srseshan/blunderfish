@@ -194,19 +194,25 @@ button:hover:not(:disabled) { background: #2559ab; }
 }
 .score-btn:hover { background: #257e40; }
 
-.spinner {
+/* Mini circular progress indicator for an in-progress analysis — a donut
+   ring that fills clockwise as --pct (0-100, set from JS per move analyzed)
+   increases, instead of a plain indefinite spinner. */
+.progress-circle {
   display: inline-block;
   vertical-align: middle;
+  position: relative;
   width: 1.1rem;
   height: 1.1rem;
-  border: 2px solid var(--border);
-  border-top-color: #2e6fd1;
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  background: conic-gradient(#2e6fd1 calc(var(--pct, 0) * 1%), var(--border) 0);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.progress-circle::before {
+  content: '';
+  position: absolute;
+  inset: 2.5px;
+  border-radius: 50%;
+  background: var(--panel);
 }
 
 #status { color: var(--muted); }
