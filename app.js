@@ -1,5 +1,14 @@
 import { Chess } from './vendor/chess.esm.js';
 
+// Phone CPUs are far weaker than desktop, single-threaded WASM search
+// included — depth 18 is basically unreachable in any short time budget on
+// a phone, so every move ends up burning the full movetime cap with no
+// early exit, instead of the fast-on-easy-positions behavior desktop gets.
+// Lowering the depth ceiling on mobile restores that early-exit behavior
+// at a search depth phones can actually hit quickly.
+const IS_MOBILE = typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
+const DEPTH_CEILING = IS_MOBILE ? 12 : 18;
+
 // ---------- Stockfish engine wrapper ----------
 // Talks UCI over a Worker. The wasm path is passed via the URL hash, which
 // is how nmrugg/stockfish.js locates it when it detects it's running inside
@@ -33,15 +42,17 @@ class Engine {
     this.worker.postMessage('isready');
   }
 
-  // Runs `go depth 18 movetime N` on a FEN and resolves with
+  // Runs `go depth DEPTH_CEILING movetime N` on a FEN and resolves with
   // { bestMove, score, isMate, mateIn }. score is in pawns from the
   // side-to-move's perspective (UCI cp / 100).
   // Bounded by BOTH a depth ceiling and a time cap — the engine stops at
   // whichever it hits first. A flat movetime alone burns the full budget on
   // every move even trivial/forced ones (recaptures, forced replies, book
   // moves), which made analysis feel far slower than the old fixed-depth
-  // version. Depth 18 resolves those easy positions almost instantly, same
-  // as before; the time cap only actually gets used on positions complex
+  // version. The ceiling resolves those easy positions almost instantly,
+  // same as before (lower on mobile — see DEPTH_CEILING above, since a
+  // phone can't reach depth 18 quickly the way desktop can); the time cap
+  // only actually gets used on positions complex
   // enough to still be searching when it runs out, which is exactly where
   // a fixed depth used to finish "early" and miss subtler errors.
   evaluate(fen, movetimeMs = 3000) {
@@ -86,7 +97,7 @@ class Engine {
 
       this.worker.addEventListener('message', onMessage);
       this.worker.postMessage(`position fen ${fen}`);
-      this.worker.postMessage(`go depth 18 movetime ${movetimeMs}`);
+      this.worker.postMessage(`go depth ${DEPTH_CEILING} movetime ${movetimeMs}`);
     });
   }
 
@@ -263,6 +274,11 @@ function renderBoard(fen, highlight = {}, orientation = 'w') {
 
 // ---------- App wiring ----------
 const el = (id) => document.getElementById(id);
+
+// Desktop's 3s default is too slow on phone hardware — default mobile to
+// the fastest option instead. Only overrides the initial value, not a
+// choice the user makes themselves from the dropdown.
+if (IS_MOBILE) el('depth').value = '1000';
 
 const state = {
   engine: null,
