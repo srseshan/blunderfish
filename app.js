@@ -1,13 +1,6 @@
 import { Chess } from './vendor/chess.esm.js';
 
-// Phone CPUs are far weaker than desktop, single-threaded WASM search
-// included — depth 18 is basically unreachable in any short time budget on
-// a phone, so every move ends up burning the full movetime cap with no
-// early exit, instead of the fast-on-easy-positions behavior desktop gets.
-// Lowering the depth ceiling on mobile restores that early-exit behavior
-// at a search depth phones can actually hit quickly.
 const IS_MOBILE = typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
-const DEPTH_CEILING = IS_MOBILE ? 12 : 18;
 
 // ---------- Stockfish engine wrapper ----------
 // Talks UCI over a Worker. The wasm path is passed via the URL hash, which
@@ -42,20 +35,18 @@ class Engine {
     this.worker.postMessage('isready');
   }
 
-  // Runs `go depth DEPTH_CEILING movetime N` on a FEN and resolves with
-  // { bestMove, score, isMate, mateIn }. score is in pawns from the
+  // Runs `go depth depthCeiling movetime movetimeMs` on a FEN and resolves
+  // with { bestMove, score, isMate, mateIn }. score is in pawns from the
   // side-to-move's perspective (UCI cp / 100).
   // Bounded by BOTH a depth ceiling and a time cap — the engine stops at
   // whichever it hits first. A flat movetime alone burns the full budget on
   // every move even trivial/forced ones (recaptures, forced replies, book
-  // moves), which made analysis feel far slower than the old fixed-depth
-  // version. The ceiling resolves those easy positions almost instantly,
-  // same as before (lower on mobile — see DEPTH_CEILING above, since a
-  // phone can't reach depth 18 quickly the way desktop can); the time cap
-  // only actually gets used on positions complex
-  // enough to still be searching when it runs out, which is exactly where
-  // a fixed depth used to finish "early" and miss subtler errors.
-  evaluate(fen, movetimeMs = 3000) {
+  // moves), which made analysis feel far slower than a fixed-depth-only
+  // search. The ceiling resolves those easy positions almost instantly; the
+  // time cap only actually gets used on positions complex enough to still
+  // be searching when it runs out — exactly where a fixed depth alone would
+  // finish "early" and miss subtler errors.
+  evaluate(fen, movetimeMs = 3000, depthCeiling = 18) {
     return new Promise((resolve) => {
       let lastScore = null;
       let lastIsMate = false;
@@ -97,7 +88,7 @@ class Engine {
 
       this.worker.addEventListener('message', onMessage);
       this.worker.postMessage(`position fen ${fen}`);
-      this.worker.postMessage(`go depth ${DEPTH_CEILING} movetime ${movetimeMs}`);
+      this.worker.postMessage(`go depth ${depthCeiling} movetime ${movetimeMs}`);
     });
   }
 
@@ -275,17 +266,27 @@ function renderBoard(fen, highlight = {}, orientation = 'w') {
 // ---------- App wiring ----------
 const el = (id) => document.getElementById(id);
 
-// Desktop's 3s default is too slow on phone hardware — default mobile to
-// the fastest option instead. Only overrides the initial value, not a
-// choice the user makes themselves from the dropdown.
-if (IS_MOBILE) el('depth').value = '1000';
+// Desktop's 3s/depth-18 default is too slow on phone hardware — default
+// mobile to the fastest combo instead. Only overrides the initial value,
+// not a choice the user makes themselves from the dropdown.
+if (IS_MOBILE) el('depth').value = '1000,12';
+
+// The dropdown's value is "movetimeMs,depthCeiling" — both halves of what
+// bounds the engine search, spelled out together so the tradeoff is
+// visible instead of a hidden default buried in code.
+function readSpeedSetting() {
+  const [movetimeMs, depthCeiling] = el('depth').value.split(',').map((n) => parseInt(n, 10));
+  return { movetimeMs: movetimeMs || 3000, depthCeiling: depthCeiling || 18 };
+}
 
 const state = {
   engine: null,
   games: [],
   username: '',
-  // In-memory only (cleared on page reload) — keyed by `${game.url}|${movetimeMs}`
-  // so re-clicking an already-analyzed game skips re-running the engine.
+  // In-memory only (cleared on page reload) — keyed by
+  // `${game.url}|${movetimeMs}|${depthCeiling}` so re-clicking an
+  // already-analyzed game (at the same speed setting) skips re-running the
+  // engine, and switching speed settings correctly re-analyzes.
   analysisCache: new Map(),
   replay: {
     positions: [], // index 0 = starting position; index i = after perMove[i-1]
@@ -369,15 +370,15 @@ function renderGameTable(games, username) {
   // If a game in this list was already analyzed earlier in the session
   // (e.g. re-fetching the same range), show its cached score right away
   // instead of the Analyze button.
-  const movetimeMs = parseInt(el('depth').value, 10) || 3000;
+  const { movetimeMs, depthCeiling } = readSpeedSetting();
   games.forEach((game, i) => {
-    const cached = state.analysisCache.get(cacheKey(game, movetimeMs));
+    const cached = state.analysisCache.get(cacheKey(game, movetimeMs, depthCeiling));
     if (cached) renderScoreCell(i, cached.userAccuracy);
   });
 }
 
-function cacheKey(game, movetimeMs) {
-  return `${game.url || game.pgn}|${movetimeMs}`;
+function cacheKey(game, movetimeMs, depthCeiling) {
+  return `${game.url || game.pgn}|${movetimeMs}|${depthCeiling}`;
 }
 
 // Highlights whichever game row's replay/results are currently being shown,
@@ -425,7 +426,7 @@ function renderScoreCell(idx, userAccuracy) {
 }
 
 async function analyzeGame(game, username, idx) {
-  const movetimeMs = parseInt(el('depth').value, 10) || 3000;
+  const { movetimeMs, depthCeiling } = readSpeedSetting();
   el('results').innerHTML = '';
   el('progress').textContent = '';
   if (idx !== undefined) selectRow(idx);
@@ -434,7 +435,7 @@ async function analyzeGame(game, username, idx) {
   const black = game.black?.username || 'Black';
   const orientation = (username && black.toLowerCase() === username.toLowerCase()) ? 'b' : 'w';
 
-  const key = cacheKey(game, movetimeMs);
+  const key = cacheKey(game, movetimeMs, depthCeiling);
   const cached = state.analysisCache.get(key);
 
   if (cached) {
@@ -470,11 +471,11 @@ async function analyzeGame(game, username, idx) {
 
   setStatus('Loading Stockfish (first run downloads ~7MB, then it\'s cached)...');
   const engine = await ensureEngine();
-  setStatus(`Analyzing ${history.length} moves at ${movetimeMs / 1000}s per move...`);
+  setStatus(`Analyzing ${history.length} moves at ${movetimeMs / 1000}s / depth ${depthCeiling} per move...`);
 
   // Reset replay state and show the starting position immediately.
   const startFen = chess.fen();
-  const startEval = await engine.evaluate(startFen, movetimeMs); // white to move, so score is already white-relative
+  const startEval = await engine.evaluate(startFen, movetimeMs, depthCeiling); // white to move, so score is already white-relative
   state.replay = {
     positions: [{
       fen: startFen,
@@ -507,7 +508,7 @@ async function analyzeGame(game, username, idx) {
     chess.move(move);
     const fenAfter = chess.fen();
 
-    const evalResult = await engine.evaluate(fenAfter, movetimeMs);
+    const evalResult = await engine.evaluate(fenAfter, movetimeMs, depthCeiling);
     // Stockfish reports score from the side-to-move's perspective *after* the
     // move (i.e. the opponent's perspective). Flip to a White-relative score.
     const sideToMoveAfter = playerColor === 'w' ? 'b' : 'w';
